@@ -1,0 +1,318 @@
+#!/bin/bash
+# Script Name: permz    http://igurublog.wordpress.com/downloads/script-permz/ 
+# Requires: zenity gksu
+# Optional: sudo (recommended to prevent multiple root password prompts)
+# License: GNU GENERAL PUBLIC LICENSE Version 3 http://www.gnu.org/licenses/gpl-3.0.txt
+
+
+# Zenity Config
+title="Permz"
+width="300"
+height="700"
+
+# set superuser command to use
+if [ "`sudo -V 2> /dev/null | grep "version"`" != "" ]; then
+	# sudo is available, so have gksu use sudo to prevent being prompted
+	#      for root password multiple times
+	sucmd="gksu -gS"
+else
+	# sudo is not available
+	sucmd="gksu -g"
+fi
+# Set custom su command here if desired: (you may also need to test and adjust
+#      how strings are passed)
+# sucmd="gksu -g"
+
+
+
+if [ "$1" = "" ] || [ "$1" = "--help" ]; then
+	cat << EOF
+permz version 1.0.1
+Presents a GUI menu for changing file permissions/ownership.  May be run
+as a normal user or root.
+Requires: zenity gksu
+Optional: sudo (recommended to prevent multiple root password prompts)
+Usage: permz FILE [...]
+
+MENU FUNCTIONS:
+rwxrwxrwx            Sets file(s) to given permissions
+Sticky Clear/Set     Performs "chmod -t" or +t to clear or set the sticky
+                     bit.  You may select to clear/set sticky in addition
+                     to changing other permissions.
+Recursive go-rxw     "chmod -R go-rxw" on file(s) recursively, denying
+                     access to non-owners
+Recursive go-w       "chmod -R go-w" on file(s) recursively, denying write
+                     to non-owners
+Recursive ugo+rX     "chmod -R ugo+rX" giving read access to all.  Also
+                     sets +x for directories and executables.
+Recursive ugo+w      "chmod -R ugo+w" on file(s), giving write to all
+  (You may select several compatible recursive functions above at once)
+Owner USER As ROOT   Sets ownership to USER:USER as root
+DELETE As ROOT       Deletes file(s) as root.  Must be used alone or with
+                     "Perform Recursively" (to delete directories - USE
+                     WITH CAUTION). Not available if permz is run as root.
+Perform As ROOT      Run as root to change selected permissions.
+                     (Use of root is automatic when changing ownership)
+Perform Recursively  Adds -R to all chmod, chown, and delete commands to
+                     descend into subdirectories.  Use in conjunction with
+                     any other functions.  (Recursion is automatic for
+                     "Recursive" functions above)
+
+Current su command is set to: $sucmd
+
+Instructions and updates:
+http://igurublog.wordpress.com/downloads/script-permz/
+
+EOF
+	exit
+# Disabled - uncomment in list of functions to enable
+#Recursive ugo+r (dirs +x)
+#                     "chmod -R ugo+r" giving read access to all.  Also
+#                     sets +x for directories (allow directory entry).
+
+fi
+
+invalidcombo()
+{
+	zenity --error --title="Permz Error" --text="You selected an invalid combination of functions"
+	exit 1
+}
+
+showerr()	# $1=errmsg
+{
+	echo "$1" | zenity --text-info --title "Permz Error" --width 600 --height 200 \
+						--window-icon=error
+	exit 2
+}
+
+# Init
+perms=""
+xperms=""
+sticky=""
+owner=""
+recur=""
+recurp=""
+deleteroot=""
+super=""
+
+# Setup Zenity dialog
+user="$(whoami)"
+if [ "$user" = "root" ]; then
+	asroot=""
+	urroot="  (you are ROOT)"
+else
+	asroot=" As ROOT"
+	urroot=""
+fi
+if [ $# = 1 ]; then
+	s=" is"
+else
+	s="s are"
+fi
+text="$# item$s selected\nPlease select desired function(s):"
+# List of functions (names must match the "Parse functions" section below)
+# Order of appearance does not matter
+opts=""
+opts="$opts FALSE \"r--r--r--\""
+opts="$opts FALSE \"rw-------\""
+opts="$opts FALSE \"rw-r--r--\""
+opts="$opts FALSE \"rw-rw-rw-\""
+opts="$opts FALSE \"rwx------\""
+opts="$opts FALSE \"rwxr--r--\""
+opts="$opts FALSE \"rwxr-xr-x\""
+opts="$opts FALSE \"rwxrwxrwx\""
+opts="$opts FALSE \"Sticky Clear (-t)\""
+opts="$opts FALSE \"Sticky Set (+t)\""
+opts="$opts FALSE \"Recursive go-rwx\""
+opts="$opts FALSE \"Recursive go-w\""
+opts="$opts FALSE \"Recursive ugo+rX\""
+#opts="$opts FALSE \"Recursive ugo+r (dirs +x)\"" # Disabled-uncomment to enable this option
+opts="$opts FALSE \"Recursive ugo+w\""
+opts="$opts FALSE \"Owner User1$asroot\""
+opts="$opts FALSE \"Owner User2$asroot\""
+opts="$opts FALSE \"Owner Root$asroot\""
+if [ "$user" != "root" ]; then
+	opts="$opts FALSE \"DELETE As ROOT\""
+	opts="$opts FALSE \"Perform As ROOT\""
+fi
+opts="$opts FALSE \"Perform Recursively\""
+# add additional choices here
+
+# Get user's choice
+ans=`eval zenity --width $width --height $height --title \"$title\" --text \\
+		\"$text\" --list --checklist --column \"\" --column \"Function${urroot}\" $opts`
+
+# user cancelled?
+if [ "$?" != "0" ] || [ "$ans" = "" ]; then
+	exit
+fi
+
+# Parse functions
+ans="$ans|"
+while [ "$ans" != "" ]; do
+	ansx="${ans%%|*}"
+	ans="${ans#*|}"
+	perms1=""
+	sticky1=""
+	owner1=""
+	case "$ansx" in
+		"r--r--r--" )
+			perms1="ugo+r,ugo-wx";;
+		"rw-------" )
+			perms1="u+rw-x,go-rwx";;
+		"rw-r--r--" )
+			perms1="u+rw-x,go+r-wx";;
+		"rw-rw-rw-" )
+			perms1="ugo+rw-x";;
+		"rwx------" )
+			perms1="u+rwx,go-rwx";;
+		"rwxr--r--" )
+			perms1="u+rwx,go+r-wx";;
+		"rwxr-xr-x" )
+			perms1="u+rwx,go+rx-w";;
+		"rwxrwxrwx" )
+			perms1="ugo+rwx";;
+		"Sticky Clear (-t)" )
+			sticky1="-t";;
+		"Sticky Set (+t)" )
+			sticky1="+t";;
+		"Recursive go-rwx" )
+			perms1="go-rwx"
+			recurp=1
+			;;
+		"Recursive go-w" )
+			perms1="go-w"
+			recurp=1
+			;;
+		"Recursive ugo+rX" )
+			perms1="go+rX"
+			recurp=1
+			;;
+		"Recursive ugo+r (dirs +x)" )
+			xperms=1;;
+		"Recursive ugo+w" )
+			perms1="ugo+w"
+			recurp=1
+			;;
+		"Owner User1$asroot" )
+			owner1="1000:1000";;
+		"Owner User2$asroot" )
+			owner1="1001:1001";;
+		"Owner Root$asroot" )
+			owner1="root:root";;
+		"DELETE As ROOT" )
+			deleteroot=1;;
+		"Perform As ROOT" )
+			super=1;;
+		"Perform Recursively" )
+			recur=" -R";;
+		"" )
+			;;
+		* )
+			showerr "ERROR: Unknown function"
+			;;
+	esac
+	if [ "$perms1" != "" ]; then
+		if [ "$perms" != "" ]; then
+			invalidcombo
+		fi
+		perms="$perms1"
+	fi
+	if [ "$sticky1" != "" ]; then
+		if [ "$sticky" != "" ]; then
+			invalidcombo
+		fi
+		sticky="$sticky1"
+	fi
+	if [ "$owner1" != "" ]; then
+		if [ "$owner" != "" ]; then
+			invalidcombo
+		fi
+		owner="$owner1"
+	fi
+done
+
+# Valid?
+if [ "$perms" != "" ] && (( xperms == 1 )); then
+	if [ "$perms" != "go+w" ] && [ "$perms" != "go-w" ]; then
+		invalidcombo
+	fi
+fi
+
+# Delete as Root
+if (( deleteroot == 1 )); then
+	if [ "$perms$sticky$owner" != "" ] || (( xperms == 1 )); then
+		invalidcombo
+	fi
+	if [ "$user" != "root" ]; then
+		errmsg=`$sucmd "rm$recur" "$@" 2>&1`
+	else
+		errmsg=`rm$recur "$@" 2>&1`
+	fi
+	if [ $? != 0 ]; then
+		showerr "$errmsg"
+	fi
+	exit
+fi
+
+# Set Permissions
+if [ "$perms$sticky" != "" ]; then
+	if [ "$perms" != "" ] && [ "$sticky" != "" ]; then
+		sticky=",$sticky"
+	fi
+	if [ "$recur" != "" ] || (( recurp == 1 )); then
+		recurtmp=" -R"
+	else
+		recurtmp=""
+	fi
+	if (( super == 1 )); then
+		errmsg=`$sucmd "chmod$recurtmp $perms$sticky" "$@" 2>&1`
+	else
+		errmsg=`chmod$recurtmp $perms$sticky "$@" 2>&1`
+	fi
+	if [ $? != 0 ]; then
+		showerr "$errmsg"
+	fi
+fi
+
+# Recursive go+r (dirs +x)
+if (( xperms == 1 )); then
+	# Set files and dirs +r
+	if (( super == 1 )); then
+		errmsg=`$sucmd "chmod -R ugo+r" "$@" 2>&1`
+	else
+		errmsg=`chmod -R go+r "$@" 2>&1`
+	fi
+	if [ $? != 0 ]; then
+		showerr "$errmsg"
+	fi	
+	# Set dirs +x
+	for f in "$@"; do
+		if [ -d "$f" ]; then
+			if (( super == 1 )); then
+				errmsg=`$sucmd "bash -c" "find \"$f\" -type d -execdir chmod ugo+x {} \;" 2>&1`
+			else
+				errmsg=`find "$f" -type d -execdir chmod ugo+x {} \; 2>&1`
+			fi
+			if [ $? != 0 ]; then
+				showerr "$errmsg"
+			fi
+		fi
+	done
+fi
+
+# Change Owner
+if [ "$owner" != "" ]; then
+	if [ "$user" != "root" ]; then
+		errmsg=`$sucmd "chown$recur" $owner "$@" 2>&1`
+	else
+		errmsg=`chown$recur $owner "$@" 2>&1`
+	fi
+	if [ $? != 0 ]; then
+		showerr "$errmsg"
+	fi
+fi
+
+
+exit
+
