@@ -2,7 +2,8 @@ README for permz
 
 
 OVERVIEW
-    
+========
+
 permz presents a zenity GUI menu which allows you to quickly change file 
 permissions and ownership as a normal user or as root, and delete files as 
 root. permz is designed to be integrated into any file manager.
@@ -11,19 +12,26 @@ Homepage & Instructions:
     http://igurublog.wordpress.com/downloads/script-permz/
 
 Downloads:
-    https://github.com/IgnorantGuru/permz
+    https://github.com/IgnorantGuru/permz/tags
     https://github.com/IgnorantGuru/permz/tree/master/packages
 
 Debian/Ubuntu PPA:
     http://igurublog.wordpress.com/downloads/ppa/
     
+Bug Reports:
+    https://github.com/IgnorantGuru/permz/issues
+
 
 INSTALLATION
+============
 
 To install:
 
     wget https://github.com/IgnorantGuru/permz/raw/master/permz
     sudo install permz /usr/local/bin/permz
+
+permz also REQUIRES: zenity gksu
+permz recommends:    sudo
 
 To remove:
     
@@ -31,6 +39,7 @@ To remove:
 
 
 LICENSE
+=======
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
