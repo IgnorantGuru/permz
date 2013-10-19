@@ -9,3 +9,4 @@ Changelog: changelog
 Readme: README
 Depends: zenity, gksu
 Suggests: sudo
+Files: permz /usr/bin/
